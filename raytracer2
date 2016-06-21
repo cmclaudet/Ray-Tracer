@@ -1,0 +1,157 @@
+# This is a 3D model of an optical ray tracer.
+import numpy
+import math
+import matplotlib.pyplot as plt
+
+class Ray:
+    def __init__(self, x=0.0, y=0.0, z=0.0, i=0.0, j=0.0, k=0.0):
+        self.p=numpy.array([x,y,z])
+        self.k=numpy.array([i,j,k])
+        self.plist=[self.p]
+        self.klist=[self.k]
+        
+    def position(self):
+        return self.p
+        
+    def direction(self):
+        return self.k
+        
+    def append(self, x1=0.0, y1=0.0, z1=0.0, i1=0.0, j1=0.0, k1=0.0):
+        self.p1=numpy.array([x1,y1,z1])
+        self.k1=numpy.array([i1,j1,k1])
+        self.plist.append(self.p1)
+        self.klist.append(self.k1)
+        return self.plist, self.klist
+        
+    def vertices(self):
+        return self.plist
+        
+    def pp(self):
+        return self.plist[-1]
+        
+    def kk(self):
+        return self.klist[-1]
+        
+    def plot(self):
+        points=numpy.array(self.plist)
+        y=points[:,1]
+        z=points[:,2]
+        plt.plot(y,z)
+        plt.show()
+        
+    def __repr__(self):
+        return "%s(x1=%g,y1=%g,z1=%g,i1=%g,j1=%g,k1=%g)" % ("Final Ray", (self.plist[-1])[0],(self.plist[-1])[1],(self.plist[-1])[2],(self.klist[-1])[0],(self.klist[-1])[1],(self.klist[-1])[2])
+        
+        
+class OpticalElement:
+    def propagate(self, ray):
+        "propagate a ray through the optical element"
+        raise NotImplementedError()
+        
+class SphericalRefraction(OpticalElement):
+    def __init__(self, z0, curvature, n1, n2, apertureradius):
+        self.z0=z0
+        self.curvature=curvature
+        self.n1=n1
+        self.n2=n2
+        self.apertureradius=apertureradius
+        self.O=numpy.array([0.0,0.0,z0+(1/curvature)])
+        
+    def intercept(self, ray):
+        khat=(ray.kk()/numpy.linalg.norm(ray.kk()))
+        r=numpy.linalg.norm(ray.pp()-self.O)
+        rkhat=numpy.dot((ray.pp()-self.O),khat)
+        l1=-rkhat+((rkhat)**2-(r**2-(1/self.curvature)**2))**0.5
+        l2=-rkhat-((rkhat)**2-(r**2-(1/self.curvature)**2))**0.5
+        Q1=ray.pp()+l1*khat
+        Q2=ray.pp()+l2*khat
+        
+        if numpy.any(numpy.isnan(Q1)) or numpy.any(numpy.isnan(Q2)):
+            return None
+        else:
+            if l2>l1:
+                return Q1
+            else:
+                return Q2
+                
+    def refractedray(self, ray):
+        khat=(ray.kk()/numpy.linalg.norm(ray.kk()))
+        nhat=((ray.pp()-self.O)/numpy.linalg.norm(ray.pp()-self.O))
+        costheta1=-numpy.dot(nhat,khat)
+        costheta2=(1-(self.n1/self.n2)**2*(1-(costheta1)**2))**0.5
+        khat2=(self.n1/self.n2)*khat+((self.n1/self.n2)*costheta1-costheta2)*nhat
+        theta1=numpy.arccos(costheta1)
+        if math.sin(theta1)>(self.n2/self.n1):
+            return None
+        else:
+            return khat2
+        
+    def propagate_ray(self, ray):
+        intercept=self.intercept(ray)
+        if intercept is None:
+            return None
+        else:
+            refract=self.refractedray(ray)
+            ray.plist.append(intercept)
+            ray.klist.append(refract)
+            return ray.pp(),ray.kk()
+            
+    def propagate_raybundle(self,raybundle):
+        for i in raybundle.rlist:
+            self.propagate_ray(i)
+        
+class OutputPlane(OpticalElement):
+    def __init__(self, a=0.0, b=0.0, c=0.0, d=0.0, e=0.0, f=0.0):
+        self.point=numpy.array([a,b,c])
+        self.n=numpy.array([d,e,f])
+    
+    def interceptplane(self, ray):
+        C=(numpy.dot(self.point,self.n)-numpy.dot(ray.pp(),self.n))/(numpy.dot(ray.kk(),self.n))
+        intercept2=ray.pp()+C*ray.kk()
+        return intercept2
+        
+    def propagate_ray(self, ray):
+        intercept=self.interceptplane(ray)
+        if intercept is None:
+            return ray.pp(),ray.kk()
+        else:
+            ray.plist.append(intercept)
+            ray.klist.append(ray.kk())
+            return ray.pp(),ray.kk()
+            
+    def propagate_raybundle(self,raybundle):
+        for i in raybundle.rlist:
+            self.propagate_ray(i)
+                
+class RayBundle:
+    def __init__(self,R,N,m1=0.0,m2=0.0,m3=0.0,n1=0.0,n2=0.0,n3=0.0):
+        self.centre=numpy.array([m1,m2,m3])
+        self.direction=numpy.array([n1,n2,n3])
+        self.rlist=[Ray(m1,m2,m3,n1,n2,n3)]
+        for i,r in enumerate(R):
+            no = N[i]
+            for t in range(0,no):
+                a = (2*numpy.pi/no)*t
+                rposition=self.centre+[numpy.cos(a)*r,numpy.sin(a)*r,0]
+                rray=Ray(rposition[0], rposition[1], rposition[2], self.direction[0], self.direction[1], self.direction[2])
+                self.rlist.append(rray)
+                
+    def plot(self):
+        for r in self.rlist:
+            input = numpy.array(r.plist)
+            x=input[:,0]
+            y=input[:,1]
+            z=input[:,2]
+            plt.plot(y,z)
+        plt.show()
+        plt.grid()
+        
+    def xyplane(self):
+        for r in self.rlist:
+            input = numpy.array(r.plist)
+            x=input[:,0]
+            y=input[:,1]
+            z=input[:,2]
+            plt.plot(x,y,'ro')
+        plt.show()
+        plt.grid()
